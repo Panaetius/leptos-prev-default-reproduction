@@ -1,5 +1,9 @@
 use crate::error_template::{AppError, ErrorTemplate};
-use leptos::*;
+#[cfg(feature = "ssr")]
+use axum::extract::Multipart;
+#[cfg(feature = "ssr")]
+use futures_util::stream::StreamExt;
+use leptos::{ev::SubmitEvent, *};
 use leptos_meta::*;
 use leptos_router::*;
 
@@ -8,6 +12,7 @@ pub fn App(cx: Scope) -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context(cx);
 
+    let (show, set_show) = create_signal(cx, false);
     view! {
         cx,
 
@@ -27,6 +32,10 @@ pub fn App(cx: Scope) -> impl IntoView {
             }
             .into_view(cx)
         }>
+            <nav>
+                <button on:click=move |_| { set_show.update(|v| *v = !*v) }>Upload</button>
+                <MyUploadForm show=show set_show=set_show />
+            </nav>
             <main>
                 <Routes>
                     <Route path="" view=|cx| view! { cx, <HomePage/> }/>
@@ -40,11 +49,38 @@ pub fn App(cx: Scope) -> impl IntoView {
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
     // Creates a reactive value to update the button
-    let (count, set_count) = create_signal(cx, 0);
-    let on_click = move |_| set_count.update(|count| *count += 1);
 
     view! { cx,
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
+        <div></div>
+    }
+}
+
+#[cfg(feature = "ssr")]
+pub async fn upload_file(mut multipart: Multipart) -> axum::http::StatusCode {
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        println!("{:?}", field.name())
+    }
+    axum::http::StatusCode::ACCEPTED
+}
+#[component]
+fn MyUploadForm(cx: Scope, show: ReadSignal<bool>, set_show: WriteSignal<bool>) -> impl IntoView {
+    let on_submit = move |ev: SubmitEvent| {
+        // uncomment this to not panic
+        // ev.prevent_default();
+        set_show(false);
+    };
+    view! {cx,
+        <Show when=move || { show() } fallback=|_| { () }>
+
+            <Form
+                action="/api/upload_file"
+                method="POST"
+                enctype="multipart/form-data".to_string()
+                // comment this for normal upload functionality
+                on:submit=on_submit>
+                <input type="file" name="file"/>
+                <button type="submit">Submit</button>
+            </Form>
+        </Show>
     }
 }
